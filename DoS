@@ -1,0 +1,199 @@
+//Constant definitions: the numbers of ports on switch, clients, host ,and Fake client name for switch.
+#define PN 8; 
+#define KN 4;
+#define HN 1;
+#define RN 4;
+//Enumerations
+enum{Pkt_Out,Pkt_Out_Relay,Pkt_In,Pkt_In_Report};//Massages type
+enum{SYN,ACK,DATA};//Packets type
+enum{P0,P1,P2,P3,P4,P5,P6,P7};//Ports
+enum{R0,R1,R2,R3};//Fake client name for switch
+enum{K0,K1,K2,K3};//Clients
+enum{H};//Host
+enum{C};//Controller
+enum{S};//Switch
+//==================================
+channel SC 0;
+channel CS 0;
+channel HS[PN] 0;
+channel SH[PN] 0;
+channel KS[KN] 0;
+channel SK[KN] 0;
+channel Cmanage 0;// CReceiver to CManager in Controller
+channel Csend 0;// CManager to CSender in Controller
+channel Smanage 0;// SReceiver to SManager in Switch
+channel Ssend 0;// SManager to SSender in Switch
+channel Hmanage 0;// HReceiver to HManager in Host
+channel Hsend 0;// HManager to HSender in Host
+channel Kmanage[KN-1] 0;// KReceiver to KManager in clients
+channel Ksend[KN-1] 0;// KManager to KSender in clients
+channel Amanage 0;// AReceiver to AManager in Attacker
+channel Asend 0;// AManager to ASender in Attacker
+//================================== 
+//FlowExistTable in Switch:
+var FlowExistTable[KN][HN]=[0,
+                            0,
+                            0,
+                            0];
+//FlowTable in Switch:      
+var FlowTable[KN][HN][7]=[0,0,0,0,0,0,R2,  
+                          0,0,0,0,0,0,R1,
+                          0,0,0,0,0,0,R0,
+                          0,0,0,0,0,0,R3];
+//IPTable in Switch:
+var IPTable[RN][HN]=[K2,  
+                     K1,
+                     K0,
+                     K3];                                                 
+//AccessTable in Switch:      
+var AccessTable[KN][HN]=[0,
+                         0,
+                         0,
+                         0];                               
+// HostLocTableSwitch_S in Controller:                               
+var HostLocTableSwitch_S[KN][HN][2]=[P0,P4, 
+                                     P1,P5,     
+                                     P2,P6,
+                                     P3,P7];
+//==================================
+var FlowExist=0;     var Access=0;             var j=0; 
+var PR=0;            var SEQR=0;               var N:{0..10};
+var m3=0;            var m4=0;                 var KIP=0;
+var SIP3=0;          var SIP4=0;               var IPR=0;
+var SP3=0;           var SP4=0;           
+var DIP3=0;          var DIP4=0;
+var DP3=0;           var DP4=0;
+var SEQ3=0;          var SEQ4=0;
+//==================================
+Controller = (CReceiver|||CSender)||CManager;
+
+CReceiver = SC?m2.i.m1.SIP.SP.DIP.DP.SEQ->Cmanage!m2.i.m1.SIP.SP.DIP.DP.SEQ->CReceiver;
+
+CManager = Cmanage?m2.i.m1.SIP.SP.DIP.DP.SEQ->CManager1(m2,i,m1,SIP,SP,DIP,DP,SEQ);CManager;
+CManager1(m2,i,m1,SIP,SP,DIP,DP,SEQ) =
+ifa(m2==Pkt_In && m1==ACK){
+{m3=Pkt_Out; j=HostLocTableSwitch_S[SIP][H][1];}->
+Csend!m3.i.m1.SIP.SP.DIP.DP.SEQ.j->Skip};
+ifa(m2==Pkt_In_Report && m1==ACK){
+{m3=Pkt_Out_Relay;}->
+Csend!m3.i.m1.SIP.SP.DIP.DP.SEQ->Skip};
+
+CSender = ((Csend?m.i.m1.SIP.SP.DIP.DP.SEQ.e->CS!m.i.m1.SIP.SP.DIP.DP.SEQ.e->Skip)
+          [](Csend?m.i.m1.SIP.SP.DIP.DP.SEQ->CS!m.i.m1.SIP.SP.DIP.DP.SEQ->Skip));CSender;
+//========================================================
+Switch = (SReceiver|||SSender)||SManager;
+
+SReceiver = (([]i:{0..KN-1} @ KS[i]?m1.SIP.SP.DIP.DP.SEQ->Smanage!i.m1.SIP.SP.DIP.DP.SEQ->Skip)
+            []([]h:{0..PN-1} @ HS[h]?m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Smanage!h.m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Skip)
+            [](CS?m2.i.m1.SIP.SP.DIP.DP.SEQ.e->Smanage!C.m2.i.m1.SIP.SP.DIP.DP.SEQ.e->Skip)
+            [](CS?m2.i.m1.SIP.SP.DIP.DP.SEQ->Smanage!C.m2.i.m1.SIP.SP.DIP.DP.SEQ->Skip));SReceiver;
+
+SManager = (Smanage?i.m1.SIP.SP.DIP.DP.SEQ->Smanage1(i,m1,SIP,SP,DIP,DP,SEQ)
+           [](Smanage?h.m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Smanage2(h,m1,SIP,SP,DIP,DP,SEQ,m2,SIP1,SP1,DIP1,DP1,SEQ1))
+           [](Smanage?C.m2.i.m1.SIP.SP.DIP.DP.SEQ.e->Smanage3(m2,i,m1,SIP,SP,DIP,DP,SEQ,e))
+           [](Smanage?C.m2.i.m1.SIP.SP.DIP.DP.SEQ->Smanage4(m2,i,m1,SIP,SP,DIP,DP,SEQ)));SManager;
+           
+Smanage1(i,m1,SIP,SP,DIP,DP,SEQ) =
+{FlowExist=FlowExistTable[SIP][H];}->
+ifa(m1==SYN && FlowExist==0){
+{Access=AccessTable[SIP][H]; AccessTable[SIP][H]=Access+1;
+m3=ACK; SIP3=DIP; SP3=DP; DIP3=SIP; DP3=SP; SEQ3=SEQ+1;
+m4=SYN; SIP4=DIP; SP4=DP; DIP4=SIP; DP4=SP; SEQ4=N;
+FlowTable[SIP][H][0]=DP;
+FlowTable[SIP][H][1]=DIP;
+FlowTable[SIP][H][2]=SEQ;
+FlowTable[SIP][H][3]=SEQ4;}->
+Ssend!i.m3.SIP3.SP3.DIP3.DP3.SEQ3.m4.SIP4.SP4.DIP4.DP4.SEQ4->Skip};
+ifa(m1==ACK && FlowExist==0 && FlowTable[SIP][DIP][3]+1==SEQ){
+{Access=AccessTable[SIP][H]; AccessTable[SIP][H]=Access+1; m3=Pkt_In;}->
+Ssend!C.m3.i.m1.SIP.SP.DIP.DP.SEQ->Skip};
+ifa(m1==DATA){
+{PR=FlowTable[SIP][H][5];
+IPR=FlowTable[SIP][H][6];
+SEQR=FlowTable[SIP][H][2];
+FlowTable[SIP][H][2]=SEQR+1;
+m3=DATA; SIP3=IPR; SP3=PR; DIP3=DIP; DP3=DP; SEQ3=SEQR;}->
+Ssend!PR.m3.SIP3.SP3.DIP3.DP3.SEQ3->Skip}
+else{Skip};
+
+Smanage2(h,m1,SIP,SP,DIP,DP,SEQ,m2,SIP1,SP1,DIP1,DP1,SEQ1) =
+{KIP=IPTable[DIP][H]; FlowExist=FlowExistTable[KIP][H];}->
+ifa(m1==ACK && FlowExist==0 && m2==SYN){
+{m3=ACK; SIP3=DIP1; SP3=DP1; DIP3=SIP1; DP3=SP1; SEQ3=SEQ1+1;}->
+Ssend!h.m3.SIP3.SP3.DIP3.DP3.SEQ3->Skip;
+{m3=ACK; SIP3=DIP1; SP3=DP1; DIP3=SIP1; DP3=SP1; SEQ3=SEQ1+1; FlowTable[KIP][H][4]=SEQ1; m4=Pkt_In_Report;}->
+Ssend!C.m4.h.m3.SIP3.SP3.DIP3.DP3.SEQ3->Skip};
+
+Smanage3(m2,i,m1,SIP,SP,DIP,DP,SEQ,e)=
+ifa(m2==Pkt_Out){
+{FlowTable[SIP][H][5]=e;
+IPR=FlowTable[SIP][H][6];
+SEQR=FlowTable[SIP][H][2];
+m3=SYN; SIP3=IPR; SP3=e; DIP3=DIP; DP3=DP; SEQ3=SEQR;}->
+Ssend!e.m3.SIP3.SP3.DIP3.DP3.SEQ3->Skip};
+
+Smanage4(m2,i,m1,SIP,SP,DIP,DP,SEQ) =
+ifa(m2==Pkt_Out_Relay){
+{KIP=IPTable[SIP][H]; FlowExistTable[KIP][H]=1;}->Skip};
+
+SSender = ((Ssend?h.m1.SIP.SP.DIP.DP.SEQ->SH[h]!m1.SIP.SP.DIP.DP.SEQ->Skip)
+          [](Ssend?i.m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->SK[i]!m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Skip)
+          [](Ssend?C.m2.i.m1.SIP.SP.DIP.DP.SEQ->SC!m2.i.m1.SIP.SP.DIP.DP.SEQ->Skip));SSender;               
+//========================================================
+Client(x) = (KReceiver(x)|||(KSender1(x)||KSender2(x)))||KManager(x);
+
+KReceiver(x) = (SK[x]?m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Kmanage[x]!m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Skip);KReceiver(x);
+
+KManager(x) = Kmanage[x]?m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Kmanage1(x,m1,SIP,SP,DIP,DP,SEQ,m2,SIP1,SP1,DIP1,DP1,SEQ1);KManager(x); 
+              
+Kmanage1(x,m1,SIP,SP,DIP,DP,SEQ,m2,SIP1,SP1,DIP1,DP1,SEQ1) =
+ifa(m1==ACK && m2==SYN){
+{m3=ACK; SIP3=DIP1; SP3=DP1; DIP3=SIP1; DP3=SP1; SEQ3=SEQ1+1;}->
+Ksend[x]!m3.SIP3.SP3.DIP3.DP3.SEQ3->Skip;
+{m4=DATA; SIP4=DIP1; SP4=DP1; DIP4=SIP1; DP4=SP1; SEQ4=SEQ1+1;}->
+Ksend[x]!m4.SIP4.SP4.DIP4.DP4.SEQ4->Stop};
+
+KSender1(x) = ({m3=SYN; SIP3=(x); SP3=P1; DIP3=H; DP3=P0; SEQ3=N;}->KS[x]!m3.SIP3.SP3.DIP3.DP3.SEQ3->Stop);
+KSender2(x) = Ksend[x]?m.SIP.SP.DIP.DP.SEQ->KS[x]!m.SIP.SP.DIP.DP.SEQ->KSender2(x);
+//========================================================
+Host = (HSender|||HReceiver)||HManager;
+
+HReceiver = ([]i:{0..PN-1} @ SH[i]?m1.SIP.SP.DIP.DP.SEQ->Hmanage!i.m1.SIP.SP.DIP.DP.SEQ->Skip);HReceiver;
+           
+HManager = (Hmanage?i.m1.SIP.SP.DIP.DP.SEQ->Hmanage1(i,m1,SIP,SP,DIP,DP,SEQ));HManager;
+ 
+Hmanage1(i,m1,SIP,SP,DIP,DP,SEQ) =           
+ifa(m1==SYN){
+{m3=ACK; SIP3=DIP; SP3=DP; DIP3=SIP; DP3=SP; SEQ3=SEQ+1; 
+ m4=SYN; SIP4=DIP; SP4=DP; DIP4=SIP; DP4=SP; SEQ4=N;}->
+Hsend!i.m3.SIP3.SP3.DIP3.DP3.SEQ3.m4.SIP4.SP4.DIP4.DP4.SEQ4->Skip};
+
+HSender  = (Hsend?i.m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->HS[i]!m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Skip);HSender;
+//========================================================
+ Attacker =  (AReceiver|||ASender)||AManager; 
+
+AReceiver = (SK[K3]?m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Amanage!m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Skip);AReceiver;
+
+AManager = Amanage?m1.SIP.SP.DIP.DP.SEQ.m2.SIP1.SP1.DIP1.DP1.SEQ1->Amanage1(m1,SIP,SP,DIP,DP,SEQ,m2,SIP1,SP1,DIP1,DP1,SEQ1);AManager;
+
+Amanage1(m1,SIP,SP,DIP,DP,SEQ,m2,SIP1,SP1,DIP1,DP1,SEQ1)=
+ifa(m1==ACK || m2==SYN)
+{ASender};
+
+ASender = ({m4=SYN; SIP4=K3; SP4=P1; DIP4=H; DP4=P0; SEQ4=N;}->KS[K3]!m4.SIP4.SP4.DIP4.DP4.SEQ4->Skip);ASender;
+//======================================================== 
+//The origianl system model
+SystemLiveness = ((|||x:{K0,K1,K2}@Client(x)|||Attacker)||Switch||Controller||Host);
+
+System = (Attacker||Switch||Controller||Host);
+//======================================================== 
+//Assertions for the system model
+
+#define Relay_Finish AccessTable[K0][H]==2 && FlowExistTable[K0][H]==1 &&
+                     AccessTable[K1][H]==2 && FlowExistTable[K1][H]==1 &&
+                     AccessTable[K2][H]==2 && FlowExistTable[K2][H]==1;
+
+#assert SystemLiveness |=<> Relay_Finish;
+//========================================================
+#define AttackerHasFlow FlowExistTable[K3][H] == 0;
+#assert System |= [] AttackerHasFlow;
